@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A business project or idea being analyzed",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "currentVersionId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "ownerId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "order": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "sleeping", "abandoned"]
+        }
+      },
+      "required": ["id", "title", "createdAt", "updatedAt", "ownerId"]
+    },
+    "Version": {
+      "title": "Version",
+      "description": "An analysis version for a project, reflecting a pivot or iteration",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "versionNumber": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "pivotReason": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "userInput": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "analysisResult": {
+          "type": "object",
+          "description": "The AI structured evaluation output map"
+        },
+        "preQualification": {
+          "type": "object",
+          "description": "Optionally stored pre-qualification micro-test scores"
+        }
+      },
+      "required": ["id", "versionNumber", "createdAt", "userInput", "analysisResult"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Business ideas owned by users"
+    },
+    "/projects/{projectId}/versions/{versionId}": {
+      "schema": "Version",
+      "description": "Iterative analysis records for each project version"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "SaaS PivotAnalyzer",
+  "description": "Un outil d'analyse stratégique d'idées business et de pivots optimisé avec le modèle Gemini Flash.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

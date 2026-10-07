@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for validating common rules
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Capture the project parent to check ownership
+    function getProject(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Catch-all default deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Projects Collection rules
+    match /projects/{projectId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+        && isValidId(projectId)
+        && incoming().id == projectId
+        && incoming().ownerId == request.auth.uid
+        && incoming().title is string && incoming().title.size() <= 200
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().currentVersionId is string && incoming().currentVersionId.size() <= 128
+        && (!('order' in incoming()) || incoming().order is number)
+        && (!('status' in incoming()) || incoming().status in ['active', 'sleeping', 'abandoned'])
+        && (!('currentPhase' in incoming()) || incoming().currentPhase in ['ideation', 'benchmark', 'canvas', 'mvp'])
+        && (!('latestPreQualScore' in incoming()) || incoming().latestPreQualScore is number)
+        && (!('latestOverallScore' in incoming()) || incoming().latestOverallScore is number)
+        && (!('latestSolopreneurScore' in incoming()) || incoming().latestSolopreneurScore is number)
+        && incoming().keys().hasAll(['id', 'title', 'createdAt', 'updatedAt', 'currentVersionId', 'ownerId'])
+        && incoming().keys().hasOnly(['id', 'title', 'createdAt', 'updatedAt', 'currentVersionId', 'ownerId', 'order', 'status', 'currentPhase', 'latestPreQualScore', 'latestOverallScore', 'latestSolopreneurScore']);
+
+      // Hardened, secure update rules for all mutable project properties
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && incoming().ownerId == request.auth.uid
+        && incoming().id == projectId
+        && incoming().createdAt == resource.data.createdAt
+        && incoming().title is string && incoming().title.size() <= 200
+        && incoming().currentVersionId is string && incoming().currentVersionId.size() <= 128
+        && (!('order' in incoming()) || incoming().order is number)
+        && (!('status' in incoming()) || incoming().status in ['active', 'sleeping', 'abandoned'])
+        && (!('currentPhase' in incoming()) || incoming().currentPhase in ['ideation', 'benchmark', 'canvas', 'mvp'])
+        && (!('latestPreQualScore' in incoming()) || incoming().latestPreQualScore is number)
+        && (!('latestOverallScore' in incoming()) || incoming().latestOverallScore is number)
+        && (!('latestSolopreneurScore' in incoming()) || incoming().latestSolopreneurScore is number)
+        && incoming().keys().hasAll(['id', 'title', 'createdAt', 'updatedAt', 'currentVersionId', 'ownerId'])
+        && incoming().keys().hasOnly(['id', 'title', 'createdAt', 'updatedAt', 'currentVersionId', 'ownerId', 'order', 'status', 'currentPhase', 'latestPreQualScore', 'latestOverallScore', 'latestSolopreneurScore']);
+
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Versions Subcollection rules
+    match /projects/{projectId}/versions/{versionId} {
+      // Validate read of subcollection by verifying parent project ownership (No index needed)
+      allow read: if isSignedIn() && getProject(projectId).ownerId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(projectId)
+        && isValidId(versionId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().id == versionId
+        && incoming().versionNumber is number
+        && incoming().createdAt == request.time
+        && incoming().userInput is string && incoming().userInput.size() <= 10000
+        && (!('pivotReason' in incoming()) || incoming().pivotReason == null || (incoming().pivotReason is string && incoming().pivotReason.size() <= 1000))
+        && incoming().businessModelCanvas is map
+        && incoming().aiAnalysisStatus is string
+        && (!('aiErrorMessage' in incoming()) || incoming().aiErrorMessage == null || (incoming().aiErrorMessage is string && incoming().aiErrorMessage.size() <= 10000))
+        && (!('analysisResult' in incoming()) || incoming().analysisResult == null || incoming().analysisResult is map)
+        && (!('marketAnalysis' in incoming()) || incoming().marketAnalysis == null || incoming().marketAnalysis is map)
+        && (!('solopreneurAnalysis' in incoming()) || incoming().solopreneurAnalysis == null || incoming().solopreneurAnalysis is map)
+        && (!('investorScreening' in incoming()) || incoming().investorScreening == null || incoming().investorScreening is map)
+        && (!('ideationNotes' in incoming()) || incoming().ideationNotes == null || (incoming().ideationNotes is string && incoming().ideationNotes.size() <= 10000))
+        && (!('ideationQuestions' in incoming()) || incoming().ideationQuestions == null || incoming().ideationQuestions is list)
+        && incoming().keys().hasAll(['id', 'versionNumber', 'createdAt', 'userInput', 'businessModelCanvas', 'aiAnalysisStatus', 'ownerId']);
+
+      allow update: if isSignedIn()
+        && getProject(projectId).ownerId == request.auth.uid
+        && incoming().ownerId == request.auth.uid
+        && incoming().id == versionId
+        && incoming().versionNumber == resource.data.versionNumber
+        && incoming().createdAt == resource.data.createdAt
+        && incoming().userInput is string && incoming().userInput.size() <= 10000
+        && incoming().businessModelCanvas is map
+        && incoming().aiAnalysisStatus is string
+        && (!('aiErrorMessage' in incoming()) || incoming().aiErrorMessage == null || (incoming().aiErrorMessage is string && incoming().aiErrorMessage.size() <= 10000))
+        && (!('analysisResult' in incoming()) || incoming().analysisResult == null || incoming().analysisResult is map)
+        && (!('marketAnalysis' in incoming()) || incoming().marketAnalysis == null || incoming().marketAnalysis is map)
+        && (!('solopreneurAnalysis' in incoming()) || incoming().solopreneurAnalysis == null || incoming().solopreneurAnalysis is map)
+        && (!('investorScreening' in incoming()) || incoming().investorScreening == null || incoming().investorScreening is map)
+        && (!('ideationNotes' in incoming()) || incoming().ideationNotes == null || (incoming().ideationNotes is string && incoming().ideationNotes.size() <= 10000))
+        && (!('ideationQuestions' in incoming()) || incoming().ideationQuestions == null || incoming().ideationQuestions is list)
+        && (!('pivotReason' in incoming()) || incoming().pivotReason == null || (incoming().pivotReason is string && incoming().pivotReason.size() <= 1000));
+
+      allow delete: if isSignedIn() && getProject(projectId).ownerId == request.auth.uid;
+    }
+  }
+}
