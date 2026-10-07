@@ -2,7 +2,7 @@ name: Deploy Vite App to GitHub Pages
 
 on:
   push:
-    branches: ['main'] # ou 'master' selon le nom de ta branche principale
+    branches: ['main'] # ou 'master' selon ta branche principale
 
 permissions:
   contents: read
@@ -27,10 +27,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build project
         run: npm run build
