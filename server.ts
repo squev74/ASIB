@@ -69,12 +69,18 @@ async function generateContentWithRobustFallback(contents: string, systemInstruc
     }
   }
 
-  // If all models in the queue fail, check if any failed due to quota limitations (429) and throw a highly-reassuring message
+  // If all models in the queue fail, check if any failed due to quota limitations (429) or high demand (503)
   if (lastError) {
     const errorStr = lastError.message || "";
     const errorJson = JSON.stringify(lastError);
-    if (errorStr.includes("quota") || errorStr.includes("Quota") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("429") || errorJson.includes("RESOURCE_EXHAUSTED") || errorJson.includes("quota")) {
+    const isQuota = errorStr.includes("quota") || errorStr.includes("Quota") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("429") || errorJson.includes("RESOURCE_EXHAUSTED") || errorJson.includes("quota");
+    const isUnavailable = errorStr.includes("503") || errorStr.includes("UNAVAILABLE") || errorStr.includes("high demand") || errorStr.includes("demand") || errorJson.includes("UNAVAILABLE") || errorJson.includes("503");
+
+    if (isQuota) {
       throw new Error("Votre quota quotidien gratuit d'analyse stratégique par l'IA a été temporairement atteint. Les limites se réinitialisent automatiquement toutes les 24 heures. Vous pouvez également configurer votre propre clé API payante dans les secrets du projet pour des analyses illimitées.");
+    }
+    if (isUnavailable) {
+      throw new Error("Les serveurs gratuits de l'IA connaissent actuellement une très forte affluence (Pic de demande temporaire). Veuillez cliquer à nouveau sur le bouton pour réessayer, l'outil basculera automatiquement sur un autre modèle disponible.");
     }
   }
   throw lastError || new Error("Toutes les options d'analyse de secours avec l'IA sont surchargées. Veuillez réessayer dans quelques instants.");
@@ -695,6 +701,121 @@ Réponds obligatoirement en français et sous forme de JSON conforme au schéma 
     console.error("Investor screening failed:", error);
     return res.status(500).json({
       error: "Erreur lors de la génération de la Fiche Investisseur. " + (error.message || "Veuillez réessayer.")
+    });
+  }
+});
+
+/**
+ * Route: POST /api/generate-mvp-pitch
+ * Generates an ultra-converting, structured conversational MVP conversion copywriting pack.
+ */
+app.post("/api/generate-mvp-pitch", async (req: any, res: any) => {
+  try {
+    const { userInput } = req.body;
+
+    if (!userInput) {
+      return res.status(400).json({ error: "Le userInput (description du projet) est requis." });
+    }
+
+    const systemInstruction = `Tu es un copywriter d'élite et growth hacker éthique, spécialisé dans le lancement de produits de solopreneurs.
+Génère une boîte à outils de pitch de conversion complète et authentique pour le projet.
+Le ton doit être direct, accessible, bienveillant, d'égal à égal (peer-to-peer), sans langue de bois ni jargon corporate pompeux.
+Tous les livrables doivent être rédigés en français et sous forme de JSON conforme au schéma strict demandé.`;
+
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        mvpConversionPitch: {
+          type: Type.OBJECT,
+          properties: {
+            elevatorPitch30s: { 
+              type: Type.STRING, 
+              description: "Un pitch oral humain, chaleureux et percutant de 30 secondes à utiliser en réseautage ou sur des communautés." 
+            },
+            landingPageCopy: {
+              type: Type.OBJECT,
+              properties: {
+                heroTitle: { 
+                  type: Type.STRING, 
+                  description: "Titre d'accroche direct, percutant et sans fioritures (ex : 'Arrêtez de perdre du temps sur des fiches produits inutiles.')." 
+                },
+                heroSubtitle: { 
+                  type: Type.STRING, 
+                  description: "Sous-titre explicatif clarifiant la promesse de valeur et le bénéfice immédiat." 
+                },
+                keyBenefits: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING, description: "Titre du bénéfice clé." },
+                      description: { type: Type.STRING, description: "Courte explication simple et mémorable." }
+                    },
+                    required: ["title", "description"]
+                  },
+                  description: "Exactement 3 bénéfices clients clés."
+                },
+                primaryCTA: { 
+                  type: Type.STRING, 
+                  description: "Texte d'appel à l'action pour le bouton principal (ex : 'Tester le prototype gratuitement', 'Rejoindre la bêta privée')." 
+                }
+              },
+              required: ["heroTitle", "heroSubtitle", "keyBenefits", "primaryCTA"]
+            },
+            coldOutreachTemplate: { 
+              type: Type.STRING, 
+              description: "Template de message court et chaleureux (peer-to-peer) pour DM LinkedIn/Twitter, post Reddit ou IndieHackers." 
+            },
+            conversionObjections: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  objection: { type: Type.STRING, description: "Frein ou objection typique d'un prospect (ex: 'C'est payant ?', 'Est-ce sécurisé ?')" },
+                  rebuttal: { type: Type.STRING, description: "Réponse / réassurance honnête, directe et transparente." }
+                },
+                required: ["objection", "rebuttal"]
+              },
+              description: "Exactement 3 objections fréquentes avec leurs réponses de réassurance honnêtes."
+            }
+          },
+          required: [
+            "elevatorPitch30s", 
+            "landingPageCopy", 
+            "coldOutreachTemplate", 
+            "conversionObjections"
+          ]
+        }
+      },
+      required: ["mvpConversionPitch"]
+    };
+
+    const prompt = `DESCRIPTION DU PROJET : ${userInput}`;
+
+    let response = await generateContentWithRobustFallback(prompt, systemInstruction, responseSchema);
+
+    const rawText = response.text;
+    if (!rawText) {
+      throw new Error("L'API Gemini n'a renvoyé aucun résultat pour le Pitch de Conversion.");
+    }
+
+    const result = JSON.parse(rawText.trim());
+    return res.json(result);
+
+  } catch (error: any) {
+    console.error("Generate MVP Pitch failed:", error);
+    let friendlyMsg = error.message || "Veuillez réessayer.";
+    if (friendlyMsg.includes("{") && friendlyMsg.includes("}")) {
+      if (friendlyMsg.includes("503") || friendlyMsg.includes("UNAVAILABLE") || friendlyMsg.includes("high demand") || friendlyMsg.includes("demand")) {
+        friendlyMsg = "Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez recliquer sur le bouton pour réessayer.";
+      } else if (friendlyMsg.includes("429") || friendlyMsg.includes("quota") || friendlyMsg.includes("Quota") || friendlyMsg.includes("RESOURCE_EXHAUSTED")) {
+        friendlyMsg = "Votre quota quotidien gratuit d'analyse par l'IA a été temporairement atteint. Les limites se réinitialisent d'ici quelques heures.";
+      } else {
+        friendlyMsg = "Le service d'analyse par l'IA est temporairement surchargé. Veuillez réessayer dans quelques instants.";
+      }
+    }
+    return res.status(500).json({
+      error: friendlyMsg
     });
   }
 });

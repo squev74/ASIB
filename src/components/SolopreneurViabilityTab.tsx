@@ -50,12 +50,17 @@ export default function SolopreneurViabilityTab({ projectId, version, onSuccess 
         })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Une erreur s'est produite lors de l'évaluation Solopreneur.");
+      const responseText = await res.text();
+      let solopreneurData;
+      try {
+        solopreneurData = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez cliquer à nouveau pour réessayer.");
       }
 
-      const solopreneurData = await res.json();
+      if (!res.ok) {
+        throw new Error(solopreneurData?.error || "Une erreur s'est produite lors de l'évaluation Solopreneur.");
+      }
 
       // 3. Persist output results to Firestore
       await updateDoc(docRef, {

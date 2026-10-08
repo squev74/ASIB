@@ -94,9 +94,17 @@ export default function PreQualificationWidget({
       setGoToMarketAccess(savedTest.goToMarketAccess);
       setIsEditing(false);
     } else {
+      setPainIntensity(3);
+      setTargetAudienceCount(1000);
+      setEstimatedAnnualPrice(100);
+      setUsageFrequency('weekly');
+      setPerceivedValue('medium');
+      setTimeToFirstSale('weeks');
+      setGoToMarketAccess('moderate');
       setIsEditing(true);
     }
-  }, [version, savedTest]);
+    setFeedback(null);
+  }, [projectId, version.id, savedTest]);
 
   // Real-time calculated properties
   const marketSizeCalculated = targetAudienceCount * estimatedAnnualPrice;

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
@@ -18,15 +18,26 @@ interface IdeationPhaseProps {
   version: ProjectVersion;
   onUpdatePhase: (newPhase: 'ideation' | 'benchmark' | 'canvas' | 'mvp') => Promise<void>;
   onSuccess?: () => void;
+  projectTitle?: string;
 }
 
-export default function IdeationPhase({ projectId, version, onUpdatePhase, onSuccess }: IdeationPhaseProps) {
-  const [notes, setNotes] = useState(version.ideationNotes || version.userInput || "");
+export default function IdeationPhase({ projectId, version, onUpdatePhase, onSuccess, projectTitle }: IdeationPhaseProps) {
+  const [notes, setNotes] = useState(
+    version.ideationNotes !== undefined ? version.ideationNotes : (version.userInput || "")
+  );
   const [questions, setQuestions] = useState<string[]>(version.ideationQuestions || []);
   const [isSaving, setIsSaving] = useState(false);
   const [isClarifying, setIsClarifying] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Synchronize state when switching projects or versions so each project keeps its own isolated notes
+  useEffect(() => {
+    setNotes(version.ideationNotes !== undefined ? version.ideationNotes : (version.userInput || ""));
+    setQuestions(version.ideationQuestions || []);
+    setErrorMsg(null);
+    setSaveSuccess(false);
+  }, [projectId, version.id]);
 
   // Manual save of ideation notes to Firestore
   const handleSaveNotes = async () => {
@@ -68,12 +79,18 @@ export default function IdeationPhase({ projectId, version, onUpdatePhase, onSuc
         body: JSON.stringify({ userInput: notes })
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "La clarification de l'idée a échoué.");
+      const responseText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez cliquer à nouveau pour réessayer.");
       }
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "La clarification de l'idée a échoué.");
+      }
+
       const aiQuestions = data.questions || [];
 
       // Save questions in Firestore
@@ -114,7 +131,7 @@ export default function IdeationPhase({ projectId, version, onUpdatePhase, onSuc
             Étape 1 : Phase d'Idéation & Clarification
           </span>
         </div>
-        <h3 className="text-xl font-black tracking-tight">Videz votre sac, structurez votre vision</h3>
+        <h3 className="text-xl font-black tracking-tight">Projet : <span className="text-indigo-200">{projectTitle || "Saisie en cours"}</span> — Idéation</h3>
         <p className="text-xs text-indigo-200 mt-1 max-w-2xl leading-relaxed">
           Saisissez vos idées en vrac, vos doutes, ou vos notes informelles. L'IA d'élite analysera vos notes pour vous poser 3 questions d'approfondissement sur mesure afin d'orienter vos recherches de marché.
         </p>

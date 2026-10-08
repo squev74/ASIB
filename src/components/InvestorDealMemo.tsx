@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { 
@@ -38,6 +38,13 @@ export default function InvestorDealMemo({ projectId, version, onSuccess }: Inve
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    setStage(version.investorScreening?.stage || "Idée");
+    setScreening(version.investorScreening || null);
+    setErrorMsg(null);
+    setCopied(false);
+  }, [projectId, version.id]);
+
   const handleGenerateScreening = async () => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -52,12 +59,17 @@ export default function InvestorDealMemo({ projectId, version, onSuccess }: Inve
         })
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "La génération de la Fiche Investisseur a échoué.");
+      const responseText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez cliquer à nouveau pour réessayer.");
       }
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "La génération de la Fiche Investisseur a échoué.");
+      }
       const newScreening: InvestorScreening = {
         stage,
         investorMetrics: data.investorMetrics,

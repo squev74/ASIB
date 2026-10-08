@@ -122,6 +122,26 @@ export interface ProjectVersion {
   marketAnalysis?: MarketAnalysis;
   solopreneurAnalysis?: SolopreneurAnalysis;
   investorScreening?: InvestorScreening;
+  mvpPitch?: {
+    mvpConversionPitch: {
+      elevatorPitch30s: string;
+      landingPageCopy: {
+        heroTitle: string;
+        heroSubtitle: string;
+        keyBenefits: Array<{
+          title: string;
+          description: string;
+        }>;
+        primaryCTA: string;
+      };
+      coldOutreachTemplate: string;
+      conversionObjections: Array<{
+        objection: string;
+        rebuttal: string;
+      }>;
+    };
+    updatedAt?: string;
+  };
   ideationNotes?: string;
   ideationQuestions?: string[];
   ownerId: string;

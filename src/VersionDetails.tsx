@@ -24,6 +24,7 @@ import InteractiveCanvas from "./InteractiveCanvas";
 import PreQualificationWidget from "./PreQualificationWidget";
 import SolopreneurViabilityTab from "./components/SolopreneurViabilityTab";
 import InvestorDealMemo from "./components/InvestorDealMemo";
+import MvpPitchGenerator from "./components/MvpPitchGenerator";
 
 interface VersionDetailsProps {
   userId: string;
@@ -38,6 +39,7 @@ interface VersionDetailsProps {
   projectStatus?: 'active' | 'sleeping' | 'abandoned';
   onStatusChange?: (newStatus: 'active' | 'sleeping' | 'abandoned') => void;
   currentPhase?: 'ideation' | 'benchmark' | 'canvas' | 'mvp';
+  projectTitle?: string;
 }
 
 // Help details for each rating metric
@@ -91,7 +93,8 @@ export default function VersionDetails({
   onStartPivot,
   projectStatus,
   onStatusChange,
-  currentPhase = 'benchmark'
+  currentPhase = 'benchmark',
+  projectTitle
 }: VersionDetailsProps) {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'lean' | 'market' | 'solopreneur' | 'mvp'>('market');
@@ -136,12 +139,17 @@ export default function VersionDetails({
         })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Une erreur s'est produite lors de l'appel de l'API IA.");
+      const responseText = await res.text();
+      let geminiData;
+      try {
+        geminiData = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez cliquer à nouveau pour réessayer.");
       }
 
-      const geminiData = await res.json();
+      if (!res.ok) {
+        throw new Error(geminiData?.error || "Une erreur s'est produite lors de l'appel de l'API IA.");
+      }
 
       // Help mapper
       const ensureItems = (arr: any[]) => {
@@ -411,7 +419,7 @@ export default function VersionDetails({
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              Analyse et Structure Strategique (Lean Canvas)
+              Projet : <span className="text-indigo-600 font-black">{projectTitle || "Saisie en cours"}</span>
             </h2>
             {projectStatus && onStatusChange && (
               <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200/80 p-1 rounded-xl shrink-0">
@@ -1284,6 +1292,15 @@ export default function VersionDetails({
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* 6. Générateur de Pitch de Conversion MVP Module */}
+          <div className="mt-8">
+            <MvpPitchGenerator
+              projectId={projectId}
+              version={version}
+              onSuccess={onEnrichSuccess}
+            />
           </div>
         </div>
       )}

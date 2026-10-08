@@ -51,12 +51,17 @@ export default function MarketAnalysisTab({ projectId, version, onSuccess }: Mar
         })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Une erreur s'est produite lors du benchmark de marché.");
+      const responseText = await res.text();
+      let marketData;
+      try {
+        marketData = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Les serveurs d'analyse par l'IA connaissent actuellement une très forte demande temporaire. Veuillez cliquer à nouveau pour réessayer.");
       }
 
-      const marketData = await res.json();
+      if (!res.ok) {
+        throw new Error(marketData?.error || "Une erreur s'est produite lors du benchmark de marché.");
+      }
 
       // 3. Persist structured grounding-reinforced analysis output to Firestore
       await updateDoc(docRef, {

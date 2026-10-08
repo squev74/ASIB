@@ -91,6 +91,7 @@ service cloud.firestore {
         && (!('marketAnalysis' in incoming()) || incoming().marketAnalysis == null || incoming().marketAnalysis is map)
         && (!('solopreneurAnalysis' in incoming()) || incoming().solopreneurAnalysis == null || incoming().solopreneurAnalysis is map)
         && (!('investorScreening' in incoming()) || incoming().investorScreening == null || incoming().investorScreening is map)
+        && (!('mvpPitch' in incoming()) || incoming().mvpPitch == null || incoming().mvpPitch is map)
         && (!('ideationNotes' in incoming()) || incoming().ideationNotes == null || (incoming().ideationNotes is string && incoming().ideationNotes.size() <= 10000))
         && (!('ideationQuestions' in incoming()) || incoming().ideationQuestions == null || incoming().ideationQuestions is list)
         && incoming().keys().hasAll(['id', 'versionNumber', 'createdAt', 'userInput', 'businessModelCanvas', 'aiAnalysisStatus', 'ownerId']);
@@ -109,6 +110,7 @@ service cloud.firestore {
         && (!('marketAnalysis' in incoming()) || incoming().marketAnalysis == null || incoming().marketAnalysis is map)
         && (!('solopreneurAnalysis' in incoming()) || incoming().solopreneurAnalysis == null || incoming().solopreneurAnalysis is map)
         && (!('investorScreening' in incoming()) || incoming().investorScreening == null || incoming().investorScreening is map)
+        && (!('mvpPitch' in incoming()) || incoming().mvpPitch == null || incoming().mvpPitch is map)
         && (!('ideationNotes' in incoming()) || incoming().ideationNotes == null || (incoming().ideationNotes is string && incoming().ideationNotes.size() <= 10000))
         && (!('ideationQuestions' in incoming()) || incoming().ideationQuestions == null || incoming().ideationQuestions is list)
         && (!('pivotReason' in incoming()) || incoming().pivotReason == null || (incoming().pivotReason is string && incoming().pivotReason.size() <= 1000));

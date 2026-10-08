@@ -79,7 +79,7 @@ export default function App() {
   }, []);
 
   // Fetch projects from Firestore
-  const loadProjects = async (userId: string) => {
+  const loadProjects = async (userId: string, selectId?: string) => {
     const path = "projects";
     try {
       const q = query(
@@ -93,6 +93,7 @@ export default function App() {
         const data = docSnap.data();
         loaded.push({
           ...(data as Project),
+          id: docSnap.id,
           status: data.status || 'active'
         });
       });
@@ -119,9 +120,14 @@ export default function App() {
 
       setProjects(sorted);
 
-      // Auto-select first project if nothing is selected
-      if (sorted.length > 0 && !selectedProjectId) {
-        selectProject(sorted[0].id);
+      // Auto-select first project if nothing is selected, respecting potential save id or state
+      const targetId = selectId || selectedProjectId;
+      if (sorted.length > 0) {
+        if (targetId && sorted.some(p => p.id === targetId)) {
+          selectProject(targetId);
+        } else if (!targetId) {
+          selectProject(sorted[0].id);
+        }
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, path);
@@ -189,9 +195,16 @@ export default function App() {
   };
 
   // Select project and load its versions
-  const selectProject = async (projectId: string) => {
+  const selectProject = async (projectId: string, silentRefresh: boolean = false) => {
+    const isSwitchingProject = projectId !== selectedProjectId;
     setSelectedProjectId(projectId);
-    setIsFetchingVersions(true);
+    if (isSwitchingProject && !silentRefresh) {
+      setVersions([]);
+      setSelectedVersionId(null);
+      setIsFetchingVersions(true);
+    } else if (!silentRefresh) {
+      setIsFetchingVersions(true);
+    }
     setIsEditingCanvas(false);
     setIsPivotMode(false);
     setIsCreatingNew(false);
@@ -205,12 +218,21 @@ export default function App() {
       const querySnapshot = await getDocs(q);
       const loadedVersions: Version[] = [];
       querySnapshot.forEach((docSnap) => {
-        loadedVersions.push(docSnap.data() as Version);
+        const vData = docSnap.data();
+        loadedVersions.push({
+          ...(vData as Version),
+          id: docSnap.id
+        });
       });
       setVersions(loadedVersions);
 
       if (loadedVersions.length > 0) {
-        setSelectedVersionId(loadedVersions[0].id);
+        setSelectedVersionId((prevVerId) => {
+          if (!isSwitchingProject && prevVerId && loadedVersions.some(v => v.id === prevVerId)) {
+            return prevVerId;
+          }
+          return loadedVersions[0].id;
+        });
       } else {
         setSelectedVersionId(null);
       }
@@ -275,9 +297,9 @@ export default function App() {
     setIsCreatingNew(false);
     setIsEditingCanvas(false);
     setIsPivotMode(false);
-    await loadProjects(user!.uid);
-    await selectProject(projId);
+    setSelectedProjectId(projId);
     setSelectedVersionId(verId);
+    await loadProjects(user!.uid, projId);
   };
 
   // Get active selected version data
@@ -560,16 +582,14 @@ export default function App() {
                   return (
                     <div
                       key={proj.id}
-                      className={`group w-full rounded-lg transition-all flex items-center justify-between p-2 ${
+                      onClick={() => selectProject(proj.id)}
+                      className={`group w-full rounded-lg transition-all flex items-center justify-between p-2 cursor-pointer ${
                         isSelected 
                           ? "bg-slate-100 border border-slate-200 text-slate-900" 
                           : "text-slate-600 hover:bg-slate-50/80 hover:text-slate-900"
                       }`}
                     >
-                      <button
-                        onClick={() => selectProject(proj.id)}
-                        className="flex-1 text-left flex flex-col gap-0.5 min-w-0 cursor-pointer"
-                      >
+                      <div className="flex-1 text-left flex flex-col gap-0.5 min-w-0">
                         <div className="flex items-center justify-between gap-2 w-full">
                           <div className="flex items-center gap-2 min-w-0">
                             <span 
@@ -611,7 +631,7 @@ export default function App() {
                             Mise à jour : {formatTimestamp(proj.updatedAt)}
                           </span>
                         </div>
-                      </button>
+                      </div>
 
                       <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity ml-1">
                         {index > 0 && (
@@ -805,27 +825,31 @@ export default function App() {
             )}
 
             {/* D. Show Selected Version Details Dashboard */}
-            {!isCreatingNew && !isEditingCanvas && !isPivotMode && activeVersion && (
+            {!isCreatingNew && !isEditingCanvas && !isPivotMode && !isFetchingVersions && activeVersion && (
               currentPhase === 'ideation' ? (
                 <IdeationPhase
+                  key={`${selectedProjectId}_${activeVersion.id}`}
                   projectId={selectedProjectId!}
                   version={activeVersion}
                   onUpdatePhase={(phase) => updateProjectPhase(selectedProjectId!, phase)}
-                  onSuccess={() => selectProject(selectedProjectId!)}
+                  onSuccess={() => selectProject(selectedProjectId!, true)}
+                  projectTitle={selectedProject?.title}
                 />
               ) : (
                 <VersionDetails 
+                  key={`${selectedProjectId}_${activeVersion.id}`}
                   userId={user.uid}
                   projectId={selectedProjectId!}
                   version={activeVersion}
                   priorVersionAnalysis={getPriorVersionAnalysis()}
                   onEnrichStart={() => {}}
-                  onEnrichSuccess={() => selectProject(selectedProjectId!)}
+                  onEnrichSuccess={() => selectProject(selectedProjectId!, true)}
                   onStartEdit={() => setIsEditingCanvas(true)}
                   onStartPivot={() => setIsPivotMode(true)}
                   projectStatus={projects.find((p) => p.id === selectedProjectId)?.status || 'active'}
                   onStatusChange={(newStatus) => updateProjectStatus(selectedProjectId!, newStatus)}
                   currentPhase={currentPhase}
+                  projectTitle={selectedProject?.title}
                 />
               )
             )}
