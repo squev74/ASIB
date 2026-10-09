@@ -24,34 +24,77 @@ const ai = new GoogleGenAI({
   },
 });
 
+// Track temporary cooldown timestamps for models that hit 429 rate/quota limits
+const modelCooldownUntil = new Map<string, number>();
+
+function isModelOnCooldown(modelName: string): boolean {
+  const until = modelCooldownUntil.get(modelName);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    modelCooldownUntil.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+function markModelCooldownIfQuotaExceeded(modelName: string, err: any) {
+  const errorStr = err?.message || "";
+  const errorJson = JSON.stringify(err || {});
+  const isQuota =
+    errorStr.includes("429") ||
+    errorStr.includes("RESOURCE_EXHAUSTED") ||
+    errorStr.includes("quota") ||
+    errorStr.includes("Quota") ||
+    errorJson.includes("RESOURCE_EXHAUSTED");
+  const isUnavailable =
+    errorStr.includes("503") ||
+    errorStr.includes("UNAVAILABLE") ||
+    errorStr.includes("high demand") ||
+    errorJson.includes("UNAVAILABLE");
+  const isNotFound =
+    errorStr.includes("404") ||
+    errorStr.includes("NOT_FOUND") ||
+    errorStr.includes("not found") ||
+    errorJson.includes("NOT_FOUND");
+
+  if (isNotFound) {
+    // Model name not supported on this API endpoint; skip for 24 hours
+    modelCooldownUntil.set(modelName, Date.now() + 24 * 60 * 60 * 1000);
+  } else if (isQuota) {
+    // Put quota-exhausted model on cooldown for 30 minutes
+    modelCooldownUntil.set(modelName, Date.now() + 30 * 60 * 1000);
+  } else if (isUnavailable) {
+    // Put 503 high-demand model on cooldown for 5 minutes
+    modelCooldownUntil.set(modelName, Date.now() + 5 * 60 * 1000);
+  }
+}
+
 /**
  * Robust multi-model fallback generator that walks down a queue of stable models
- * to bypass 503 capacity limit errors during high traffic spikes.
+ * to bypass 429 quota limits and 503 capacity limit errors seamlessly.
  */
 async function generateContentWithRobustFallback(contents: string, systemInstruction: string, responseSchema: any) {
-  const fallbackQueue = [
+  const candidateModels = [
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-lite-latest",
     "gemini-3.8-flash",
-    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
     "gemini-flash-latest"
   ];
+
+  // Prioritize models that are not currently on quota/availability cooldown
+  const activeModels = candidateModels.filter((m) => !isModelOnCooldown(m));
+  const fallbackQueue = activeModels.length > 0 ? activeModels : candidateModels;
 
   let lastError: any = null;
 
   for (const modelName of fallbackQueue) {
     try {
-      console.log(`[Robust Gemini Fallback] Attempting execution with model: ${modelName}`);
       const config: any = {
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: responseSchema,
       };
-
-      // Only add thinking budget config on Gemini 3 series models to avoid parameters validation errors on older models
-      if (modelName.startsWith("gemini-3.")) {
-        config.thinkingConfig = {
-          thinkingBudget: 0,
-        };
-      }
 
       const response = await ai.models.generateContent({
         model: modelName,
@@ -60,11 +103,11 @@ async function generateContentWithRobustFallback(contents: string, systemInstruc
       });
 
       if (response && response.text) {
-        console.log(`[Robust Gemini Fallback] SUCCESS using model: ${modelName}`);
         return response;
       }
     } catch (err: any) {
-      console.warn(`[Robust Gemini Fallback] WARNING: Model ${modelName} failed or unavailable:`, err.message || err);
+      markModelCooldownIfQuotaExceeded(modelName, err);
+      console.log(`[Gemini Auto-Fallback] Switching from ${modelName} to next available model in queue.`);
       lastError = err;
     }
   }
@@ -462,10 +505,16 @@ Tu dois impérativement formater ta réponse au format JSON conforme au schéma 
     let sources: Array<{ title: string; url: string }> = [];
     let fallbackUsed = false;
 
+    const searchModel = !isModelOnCooldown("gemini-3.1-flash-lite-preview")
+      ? "gemini-3.1-flash-lite-preview"
+      : !isModelOnCooldown("gemini-flash-lite-latest")
+      ? "gemini-flash-lite-latest"
+      : "gemini-3.8-flash";
+
     try {
       // Primary attempt: Execute Gemini call with real-time Google Search Grounding enabled
       response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: searchModel,
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
@@ -488,7 +537,8 @@ Tu dois impérativement formater ta réponse au format JSON conforme au schéma 
         }
       }
     } catch (searchError: any) {
-      console.warn("[Quota Fallback] Google Search Grounding or Gemini-3.8 call was ratelimited/exhausted. Falling back to robust multi-model queue...", searchError.message || searchError);
+      markModelCooldownIfQuotaExceeded(searchModel, searchError);
+      console.log("[Gemini Auto-Fallback] Switching from Google Search grounding to standard multi-model queue.");
       
       // Fallback: Use the robust multi-model fallback handler to generate the structured JSON report safely
       response = await generateContentWithRobustFallback(prompt, systemInstruction, responseSchema);
@@ -543,21 +593,11 @@ Réponds obligatoirement en français et sous forme de liste JSON conforme au sc
       required: ["questions"]
     };
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: `Voici mes notes brutes et mon vrac d'idées :\n"${userInput}"`,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema
-        }
-      });
-    } catch (err: any) {
-      console.warn("[Ideation Fallback] gemini-3.8-flash failed, calling multi-model fallback queue...", err.message || err);
-      response = await generateContentWithRobustFallback(`Voici mes notes brutes et mon vrac d'idées :\n"${userInput}"`, systemInstruction, responseSchema);
-    }
+    const response = await generateContentWithRobustFallback(
+      `Voici mes notes brutes et mon vrac d'idées :\n"${userInput}"`,
+      systemInstruction,
+      responseSchema
+    );
 
     const rawText = response.text;
     if (!rawText) {
@@ -893,24 +933,7 @@ Réponds obligatoirement en français et au format JSON conforme au schéma stri
       required: ["technical_complexity", "bootstrapping_budget", "solopreneur_viability", "actionable_recommendations"]
     };
 
-    let response;
-    try {
-      // Primary attempt: Execute content generation using the modern gemini-3.8-flash
-      response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: responseSchema
-        }
-      });
-    } catch (solopreneurErr: any) {
-      console.warn("[Solopreneur Fallback] gemini-3.8-flash model failed or ratelimited. Falling back to robust multi-model queue...", solopreneurErr.message || solopreneurErr);
-      
-      // Fallback: Use the robust multi-model fallback handler to generate the structured JSON report safely
-      response = await generateContentWithRobustFallback(prompt, systemInstruction, responseSchema);
-    }
+    const response = await generateContentWithRobustFallback(prompt, systemInstruction, responseSchema);
 
     const rawText = response.text;
     if (!rawText) {
